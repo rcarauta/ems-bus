@@ -13,7 +13,7 @@
 #     $2 -> nome do node que quer instanciar ou conectar
 #
 #
-# 2) Como instânciar um node ErlangMS com nome padrão "msbus": 
+# 2) Como instânciar um node ErlangMS com nome padrão "emsbus": 
 #    
 #            ./ems_ctl.sh start
 #
@@ -35,7 +35,7 @@
 #            ./ems_ctl.sh console nome_do_node
 #
 #         Exemplo 1: ./ems_ctl.sh console node_01
-#         Exemplo 2: ./ems_ctl.sh console   (vai conectar na instância padrão msbus)
+#         Exemplo 2: ./ems_ctl.sh console   (vai conectar na instância padrão emsbus)
 #
 
 
@@ -47,8 +47,9 @@ ems_init="application:start(ems_bus)"
 ems_stop="application:stop(ems_bus)."
 ems_log_conf="./priv/conf/elog"
 ems_hostname=`hostname`
-ems_ctl_node="msbus_shell_`date +"%I%M%S"`@$ems_hostname"
-ems_path="-pa ../emsbus/ebin deps/jsx/ebin deps/poolboy/ebin"
+ems_current_dir=`pwd`
+ems_ctl_node="ems_shell_`date +"%I%M%S"`@$ems_hostname"
+ems_path="-pa $ems_current_dir/ebin deps/jsx/ebin deps/poolboy/ebin"
 
 # Conectar no terminal de uma instância ErlangMS
 function console() {
@@ -86,12 +87,15 @@ function start() {
 # Verifica se uma instância ErlangMS está executando
 function status(){
 	node_name=$(format_node_name $1)
-	echo "Checking for an instance $node_name puebla running..."
+	echo "Checking for an instance $node_name running..."
+	cmd_eval="io:format( \"~p\", [ ems_util:node_is_live( list_to_atom( \"$node_name\" ) ) ] ), halt()"
+	echo $cmd_eval
 	is_running=`erl -noshell $ems_path \
 				-boot start_clean  \
 				-sname $ems_ctl_node \
 				-setcookie $ems_cookie \
-				-eval 'io:format( "~p", [ msbus_util:node_is_live( '$node_name' ) ] ), halt()'`
+				-eval '$cmd_eval'`
+	echo $is_running
 	if [ "$is_running" == "1" ]; then
 		echo "$node_name is already running!"
 		return 1
@@ -119,7 +123,7 @@ function format_node_name(){
 
 # header do comando
 clear
-echo "ErlangMS Control Manager [ Hostname: $ems_hostname,  Version: $ems_ctl_version ]"
+echo "ErlangMS Control Manager [ Hostname: $ems_hostname,  Version: $ems_ctl_version, Shell $ems_ctl_node ]"
 
 # Aciona o comando escolhido
 case "$1" in

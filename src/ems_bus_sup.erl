@@ -2,12 +2,8 @@
 
 -behaviour(supervisor).
 
-
 %% Supervisor callbacks
 -export([start_link/1, init/1]).
-
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type), {I, {I, start, []}, permanent, 5000, Type, [I]}).
 
 %% ===================================================================
 %% API functions

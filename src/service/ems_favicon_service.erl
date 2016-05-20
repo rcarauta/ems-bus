@@ -57,7 +57,8 @@ execute(Request, From)	->
 init(_Args) ->
     process_flag(trap_exit, true),
 	case get_favicon_from_disk() of
-		{ok, Arquivo} ->  State = #state{arquivo=Arquivo};
+		{ok, Arquivo} ->  
+			State = #state{arquivo=Arquivo};
 		{error, _Reason} -> State = #state{arquivo=null}
     end,
     {ok, State}. 

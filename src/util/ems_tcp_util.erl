@@ -12,20 +12,17 @@
 
 -include("../../include/ems_config.hrl").
 
-%% @doc Sends the data to the client. Method timeout treatment
+%% @doc Sends the data to the client.
 send_data(Socket, Data) ->
 	case gen_tcp:send(Socket, Data) of
 		{error, timeout} ->
 			gen_tcp:close(Socket),
-			ems_logger:error("Error sending response: timeout."),
-			timeout;
+			{error, timeout};
         {error, closed} ->
-			ok;
+			{error, closed};
 		{error, PosixError} ->
 			gen_tcp:close(Socket),
-			PosixErrorDescription = posix_error_description(PosixError),
-			ems_logger:error("Error sending response: ~p.", [PosixErrorDescription]),
-			PosixError;
+			{error, PosixError};
 		ok -> ok
 	end.
 

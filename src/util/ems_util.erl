@@ -303,6 +303,7 @@ read_file_as_map(FileName) ->
 	end.
 
 node_is_live(Node) -> 
+	io:format("teste ~p\n", [Node]),
 	case net_adm:ping(Node) of
 		pong -> 1;
 		_ -> 0

@@ -45,6 +45,7 @@ stop() ->
 %%====================================================================
  
 list_catalog(Request, From)	->
+	io:format("list catalog\n"),
 	ems_pool:cast(ems_catalog_service_pool, {list_catalog, Request, From}).
 
 	
@@ -63,7 +64,6 @@ handle_cast(shutdown, State) ->
 handle_cast({list_catalog, Request, _From}, State) ->
 	Result = do_list_catalog(Request, State),
 	ems_eventmgr:notifica_evento(ok_request, {service, Request, Result}),
-	%gen_server:cast(From, {service, Request, Result}),
 	{noreply, State}.
 
 handle_call(_Param, _From, State) ->

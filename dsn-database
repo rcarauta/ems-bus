@@ -1,0 +1,9 @@
+[banco1]
+Driver = FreeTDS
+Description = Simar
+Trace = No
+Server = 164.41.106.17
+Database = Simar
+Port = 1433
+TDS_Version = 8.0
+

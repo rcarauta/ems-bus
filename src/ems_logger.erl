@@ -167,7 +167,6 @@ handle_info(checkpoint, State) ->
    {noreply, NewState};
 
 handle_info(checkpoint_get_filename_logger, State) ->
-	io:format("ok"),
 	NewLogFileName = get_filename_logger(State#state.log_file_dest),
 	set_timeout_for_get_filename_logger(),
    {noreply, State#state{log_file_name = NewLogFileName}}.
@@ -186,7 +185,7 @@ code_change(_OldVsn, State, _Extra) ->
 get_filename_logger(LogFileDest) -> 
 	{{Ano,Mes,Dia},{Hora,Min,_Seg}} = calendar:local_time(),
 	NodeName = ems_util:get_node_name(),
-	NomeArqLog = lists:flatten(io_lib:format("~s/~p/~p/~s/~s_~2..0w.~2..0w.~4..0w_~2..0w:~2..0w.log", [LogFileDest, node(), Ano, ems_util:mes_extenso(Mes), NodeName, Dia, Mes, Ano, Hora, Min])),
+	NomeArqLog = lists:flatten(io_lib:format("~s/~s/~p/~s/~s_~2..0w.~2..0w.~4..0w_~2..0w:~2..0w.log", [LogFileDest, atom_to_list(node()), Ano, ems_util:mes_extenso(Mes), NodeName, Dia, Mes, Ano, Hora, Min])),
 	filelib:ensure_dir(NomeArqLog),
 	NomeArqLog.
 

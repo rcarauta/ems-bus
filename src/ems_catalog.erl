@@ -68,7 +68,18 @@ update_catalog() ->
 	ems_pool:cast(ems_catalog_pool, update_catalog).
 
 lookup(Request) ->	
-	ems_pool:call(ems_catalog_pool, {lookup, Request}).
+	try
+		Result = ems_pool:call(ems_catalog_pool, {lookup, Request}, 1000),
+		Result
+	catch
+		exit:{timeout,_} -> 
+			io:format("timeout\n\n\n"),
+			timeout;
+		_Error:_Reason ->
+			io:format("timeout2\n\n\n"),
+			timeout
+	end.
+		
 
 list_cat2() ->
 	ems_pool:call(ems_catalog_pool, list_cat2).
@@ -140,20 +151,23 @@ init_catalog() ->
 		{ok, Cat1, Cat2, Cat3} -> 
 			ets:insert(ets_ems_catalog, {cat, {Cat1, Cat2, Cat3}}),
 			ok;
+		{error, invalidcatalog} ->
+			ems_logger:error("Invalid catalog parse."),
+			{error, invalidcatalog};
 		{error, emfile} ->
-			ems_logger:error("Falha ao carregar o catálogo de serviços para o processo ~p. Muitos arquivos abertos no sistema operacional.", [self()]),
+			ems_logger:error("Failed to load the service catalog to the process ~p. Too many open files in the operating system.", [self()]),
 			{error, invalidcatalog};
 		{error, eacces} ->
-			ems_logger:error("Falha ao carregar o catálogo de serviços para o processo ~p. Não tem permissão para ler o catálogo de serviços.", [self()]),
+			ems_logger:error("Failed to load the service catalog to the process ~p. You are not allowed to read the service catalog.", [self()]),
 			{error, invalidcatalog};
 		{error, enoent} ->
-			ems_logger:error("Falha ao carregar o catálogo de serviços para o processo ~p. Catálogo de serviços não encontrado.", [self()]),
+			ems_logger:error("Failed to load the service catalog to the process ~p. Catalog services not found.", [self()]),
 			{error, invalidcatalog};
 		{error, enamem} ->
-			ems_logger:error("Falha ao carregar o catálogo de serviços para o processo ~p. Não há memória suficiente para ler o catálogo de serviços.", [self()]),
+			ems_logger:error("Failed to load the service catalog to the process ~p. There is not enough memory to read the service catalog.", [self()]),
 			{error, invalidcatalog};
 		{error, Reason} ->
-			ems_logger:error("Falha ao carregar o catálogo de serviços para o processo ~p. Erro interno: ~p.", [self(), Reason]),
+			ems_logger:error("Failed to load the service catalog to the process ~p. Error: ~p.", [self(), Reason]),
 			{stop, invalidcatalog}
 	end.
 	
@@ -184,7 +198,7 @@ init_catalog() ->
 %% @doc Serviço que lista o catálogo
 do_list_catalog(State) -> State#state.cat1.
 
-%% @doc Obtém o catálogo
+%% @doc Gets the catalog
 get_catalog() -> 
 	case get_main_catalog() of
 		{ok, CatMestre} ->
@@ -211,24 +225,28 @@ get_catalog() ->
 
 			%% Adiciona abertura e fechamento de lista para o parser correto do JSON
 			CatDefs2 = iolist_to_binary([<<"[">>, CatDefs1, <<"]">>]),
-			{ok, Cat1} = ems_util:json_decode_as_map(CatDefs2),
-			%% Faz o parser do catálogo
-			Conf = ems_config:getConfig(),
-			{Cat2, Cat3, Cat4} = parse_catalog(Cat1, [], [], [], 1, Conf),
-			{ok, Cat4, Cat2, Cat3};
+			
+			case ems_util:json_decode_as_map(CatDefs2) of
+				{ok, Cat1} ->
+					%% Faz o parser do catálogo
+					Conf = ems_config:getConfig(),
+					{Cat2, Cat3, Cat4} = parse_catalog(Cat1, [], [], [], 1, Conf),
+					{ok, Cat4, Cat2, Cat3};
+				{error, _Reason} ->
+					{error, invalidcatalog}
+			end;
 		Error -> Error
 	end.
 			
 
-%% @doc O catálogo mestre possui os includes para os catálogos
-
+%% @doc The master catalog has the includes for catalogs
 get_main_catalog() ->
 	case file:read_file(?CATALOGO_PATH) of
 		{ok, Arq} -> ems_util:json_decode_as_map(Arq);
 		Error -> Error
 	end.
 
-%% @doc Indica se o name da querystring é valido
+%% @doc Indicates whether the query string name is valid
 is_name_querystring_valido(Name) ->
 	case re:run(Name, "^[_a-zA-Z][_a-zA-Z0-9]{0,29}$") of
 		nomatch -> false;
@@ -248,6 +266,7 @@ is_name_service_valido(Name) ->
 		nomatch -> false;
 		_ -> true
 	end.
+
 
 %% @doc Indica se o tipo dos dados são é valido
 is_type_valido(<<"int">>) 	 -> true;
@@ -401,11 +420,13 @@ parse_catalog([H|T], Cat2, Cat3, Cat4, Id, Conf) ->
 	valida_url_service(Url2),
 	ServiceImpl = maps:get(<<"service">>, H),
 	{ModuleName, ModuleNameCanonical, FunctionName} = parse_service_service(ServiceImpl),
-	Apikey = maps:get(<<"APIkey">>, H, <<"false">>),
+	Hide = maps:get(<<"hide">>, H, <<"false">>),
+	UseRE = maps:get(<<"use_re">>, H, false),
 	Comment = maps:get(<<"comment">>, H, <<>>),
 	Version = maps:get(<<"version">>, H, <<>>),
 	Owner = maps:get(<<"owner">>, H, <<>>),
 	Async = maps:get(<<"async">>, H, <<"false">>),
+	Timeout = maps:get(<<"timeout">>, H, Conf#config.ems_default_service_timeout),
 	Rowid = ems_util:make_rowid_from_url(Url2, Type),
 	Lang = maps:get(<<"lang">>, H, <<>>),
 	case Lang of
@@ -421,7 +442,7 @@ parse_catalog([H|T], Cat2, Cat3, Cat4, Id, Conf) ->
 	Authentication = maps:get(<<"authentication">>, H, <<>>),
 	valida_name_service(Name),
 	valida_type_service(Type),
-	valida_bool(Apikey),
+	valida_bool(Hide),
 	valida_bool(Async),
 	valida_length(Comment, 1000),
 	valida_length(Version, 10),
@@ -430,30 +451,33 @@ parse_catalog([H|T], Cat2, Cat3, Cat4, Id, Conf) ->
 	{Querystring, QtdQuerystringRequired} = parse_querystring(maps:get(<<"querystring">>, H, <<>>)),
 	IdBin = list_to_binary(integer_to_list(Id)),
 	ServiceView = new_service_view(IdBin, Name, Url, ModuleName, FunctionName, 
-							         Type, Apikey, Comment, Version, Owner, 
-								     Async, Host, Result_Cache, Authentication, Node, Lang),
-	case is_url_com_re(binary_to_list(Url2)) orelse ModuleName =:= "ems_static_file_service" orelse ModuleName =:= "ems_options_service" of
+							         Type, Hide, Comment, Version, Owner, 
+								     Async, Host, Result_Cache, Authentication, 
+								     Node, Lang, Timeout),
+	case is_url_com_re(binary_to_list(Url2)) orelse UseRE of
 		true -> 
 			Service = new_service_re(Rowid, IdBin, Name, Url2, 
 									   ServiceImpl,
 									   ModuleName, 
 									   ModuleNameCanonical,
-									   FunctionName, Type, Apikey, Comment, 
+									   FunctionName, Type, Hide, Comment, 
 									   Version, Owner, Async, 
 									   Querystring, QtdQuerystringRequired,
 									   Host, HostName, Result_Cache,
-									   Authentication, Node, Lang),
+									   Authentication, Node, Lang,
+									   Timeout),
 			parse_catalog(T, Cat2, [Service|Cat3], [ServiceView|Cat4], Id+1, Conf);
 		false -> 
 			Service = new_service(Rowid, IdBin, Name, Url2, 
 									ServiceImpl,
 									ModuleName,
 									ModuleNameCanonical,
-									FunctionName, Type, Apikey, Comment,
+									FunctionName, Type, Hide, Comment,
 									Version, Owner, Async, 
 									Querystring, QtdQuerystringRequired,
 									Host, HostName, Result_Cache,
-									Authentication, Node, Lang),
+									Authentication, Node, Lang,
+									Timeout),
 			parse_catalog(T, [{Rowid, Service}|Cat2], Cat3, [ServiceView|Cat4], Id+1, Conf)
 	end.	
 
@@ -515,7 +539,7 @@ processa_querystring(Service, Request) ->
 					end;
 				false -> 
 					case QuerystringServico =:= <<>> of
-						true -> notfound;
+						true -> {error, notfound};
 						false -> valida_querystring(QuerystringServico, QuerystringUser)
 					end
 			end
@@ -524,7 +548,7 @@ processa_querystring(Service, Request) ->
 valida_querystring(QuerystringServico, QuerystringUser) ->
 	case valida_querystring(QuerystringServico, QuerystringUser, []) of
 		{ok, Querystring} -> Querystring;
-		notfound -> notfound
+		{error, notfound} -> {error, notfound}
 	end.
 
 valida_querystring([], _QuerystringUser, QuerystringList) ->
@@ -538,7 +562,7 @@ valida_querystring([H|T], QuerystringUser, QuerystringList) ->
 		error ->
 			%% se o usuário não informou a querystring, verifica se tem valor default na definição do serviço
 			case maps:get(<<"default">>, H, notfound) of
-				notfound -> notfound;
+				notfound -> {error, notfound};
 				Value -> valida_querystring(T, QuerystringUser, [{NomeQuery, Value} | QuerystringList])
 			end
 	end.
@@ -546,14 +570,13 @@ valida_querystring([H|T], QuerystringUser, QuerystringList) ->
 
 lookup(Request, State) ->
 	Rowid = Request#request.rowid,
-	ems_logger:info("REQUEST ROWID ~p.", [Request#request.rowid]),
 	case ets:lookup(State#state.cat2, Rowid) of
 		[] -> 
 			case lookup_re(Request, State#state.cat3) of
+				{error, notfound} -> {error, notfound};
 				{Service, ParamsMap} -> 
 					Querystring = processa_querystring(Service, Request),
-					{Service, ParamsMap, Querystring};
-				notfound -> notfound
+					{Service, ParamsMap, Querystring}
 			end;
 		[{_Rowid, Service}] -> 
 			Querystring = processa_querystring(Service, Request),
@@ -562,7 +585,7 @@ lookup(Request, State) ->
 
 
 lookup_re(_Request, []) ->
-	notfound;
+	{error, notfound};
 
 lookup_re(Request, [H|T]) ->
 	RE = H#service.id_re_compiled,
@@ -573,13 +596,13 @@ lookup_re(Request, [H|T]) ->
 			ParamsMap = maps:from_list(lists:zip(ParamNames, Params)),
 			{H, ParamsMap};
 		nomatch -> lookup_re(Request, T);
-		{error, _ErrType} -> notfound 
+		{error, _ErrType} -> {error, notfound} 
 	end.
 
 new_service_re(Rowid, Id, Name, Url, Service, ModuleName, ModuleNameCanonical, FunctionName, 
-			   Type, Apikey, Comment, Version, Owner, Async, Querystring, 
+			   Type, Hide, Comment, Version, Owner, Async, Querystring, 
 			   QtdQuerystringRequired, Host, HostName, Result_Cache,
-			   Authentication, Node, Lang) ->
+			   Authentication, Node, Lang, Timeout) ->
 	{ok, Id_re_compiled} = re:compile(Rowid),
 	#service{
 				rowid = Rowid,
@@ -594,7 +617,7 @@ new_service_re(Rowid, Id, Name, Url, Service, ModuleName, ModuleNameCanonical, F
 			    function_name = FunctionName,
 			    function = list_to_atom(FunctionName),
 			    id_re_compiled = Id_re_compiled,
-			    apikey = ems_util:binary_to_bool(Apikey),
+			    hide = ems_util:binary_to_bool(Hide),
 			    comment = Comment,
 			    version = Version,
 			    owner = Owner,
@@ -606,13 +629,14 @@ new_service_re(Rowid, Id, Name, Url, Service, ModuleName, ModuleNameCanonical, F
 			    result_cache = Result_Cache,
 			    authentication = Authentication,
 			    node = Node,
-			    lang = Lang
+			    lang = Lang,
+			    timeout = Timeout
 			}.
 
 new_service(Rowid, Id, Name, Url, Service, ModuleName, ModuleNameCanonical, FunctionName,
-			Type, Apikey, Comment, Version, Owner, Async, Querystring, 
+			Type, Hide, Comment, Version, Owner, Async, Querystring, 
 			QtdQuerystringRequired, Host, HostName, Result_Cache,
-			Authentication, Node, Lang) ->
+			Authentication, Node, Lang, Timeout) ->
 	#service{
 				rowid = Rowid,
 				id = Id,
@@ -625,7 +649,7 @@ new_service(Rowid, Id, Name, Url, Service, ModuleName, ModuleNameCanonical, Func
 			    module = list_to_atom(ModuleName),
 			    function_name = FunctionName,
 			    function = list_to_atom(FunctionName),
-			    apikey = ems_util:binary_to_bool(Apikey),
+			    hide = ems_util:binary_to_bool(Hide),
 			    comment = Comment,
 			    version = Version,
 			    owner = Owner,
@@ -637,19 +661,20 @@ new_service(Rowid, Id, Name, Url, Service, ModuleName, ModuleNameCanonical, Func
 			    result_cache = Result_Cache,
 			    authentication = Authentication,
 			    node = Node,
-			    lang = Lang
+			    lang = Lang,
+			    timeout = Timeout
 			}.
 
-new_service_view(Id, Name, Url, ModuleName, FunctionName, Type, Apikey,
+new_service_view(Id, Name, Url, ModuleName, FunctionName, Type, Hide,
 				  Comment, Version, Owner, Async, Host, Result_Cache,
-				  Authentication, Node, Lang) ->
+				  Authentication, Node, Lang, Timeout) ->
 	Service = #{<<"id">> => Id,
 				<<"name">> => Name,
 				<<"url">> => Url,
 				<<"type">> => Type,
 			    <<"module">> => list_to_binary(ModuleName),
 			    <<"function">> => list_to_binary(FunctionName),
-			    <<"apikey">> => Apikey,
+			    <<"hide">> => Hide,
 			    <<"comment">> => Comment,
 			    <<"version">> => Version,
 			    <<"owner">> => Owner,
@@ -658,7 +683,8 @@ new_service_view(Id, Name, Url, ModuleName, FunctionName, Type, Apikey,
 			    <<"result_cache">> => Result_Cache,
 			    <<"authentication">> => Authentication,
 			    <<"node">> => Node,
-			    <<"lang">> => Lang},
+			    <<"lang">> => Lang,
+			    <<"timeout">> => Timeout},
 	Service.
 
 

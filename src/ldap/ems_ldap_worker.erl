@@ -145,7 +145,6 @@ handle_info(timeout, State=#state{lsocket = LSocket, allowed_address=Allowed_Add
 			{noreply, State#state{lsocket = undefined}}; %% para de fazer accept
 		{error, timeout} ->
 			% no connection is established within the specified time
-			ems_logger:info("Check pending connections to the ldap server socket ~p.", [State#state.worker_id]),
 			%close_timeout_connections(State),
 			{noreply, State#state{open_requests = []}, 0};
 		{error, PosixError} ->

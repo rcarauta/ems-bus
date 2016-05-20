@@ -17,11 +17,9 @@
 %% Server API
 -export([start/0, stop/0]).
 
-%% Client API
--export([start_listeners/2, stop_listener/2]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/1, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_cast/2, handle_call/3, handle_info/1, handle_info/2, terminate/2, code_change/3]).
 
 % estado do servidor
 -record(state, {listener=[]}).
@@ -38,17 +36,6 @@ start() ->
 stop() ->
     gen_server:cast(?SERVER, shutdown).
  
-
-%%====================================================================
-%% Client API
-%%====================================================================
-
-start_listeners(Port, Listen_Address) ->
-	gen_server:cast(?SERVER, {start_listeners, Port, Listen_Address}).
- 
-stop_listener(Port, IpAddress) ->
-	gen_server:call(?SERVER, {stop_listener, Port, IpAddress}).
-	
  
 %%====================================================================
 %% gen_server callbacks
@@ -56,25 +43,21 @@ stop_listener(Port, IpAddress) ->
  
 init(_Args) ->
  	Config = ems_config:getConfig(),
-	case start_listeners(Config#config.tcp_listen_address_t,
-						 Config#config.tcp_port, 
-						 #state{}) of
-		{ok, State} ->
-			{ok, State};
-		{error, _Reason, State} -> 
-			{stop, State}
-	end.
-    
+	ServerConf = get_server_conf(Config),
+	TcpOpts = get_tcp_opts(Config),
+	Handler = self(),
+	ems_tcp_server:start_link(Config#config.tcp_listen_address_t, ServerConf, TcpOpts, Handler).
+			     
 handle_cast(shutdown, State) ->
-    {stop, normal, State};
+    {stop, normal, State}.
 
-handle_cast({start_listeners, Port, Listen_Address}, State) ->
-	{_, NewState} = start_listeners(Listen_Address, Port, State),
-	{noreply, NewState}.
 
-handle_call({stop_listener, Port, IpAddress}, _From, State) ->
-	{Reply, NewState} = do_stop_listener(Port, IpAddress, State),
-	{reply, Reply, NewState}.
+handle_call({new_request, Socket, RequestBin}, _From, State) ->
+	new_request(Socket, RequestBin),
+    {reply, ok, State};
+
+handle_call(_Msg, _From, State) ->
+    {reply, [], State}.
 
 handle_info(State) ->
    {noreply, State}.
@@ -93,30 +76,108 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %%====================================================================
 
-start_listeners([], _Port, State) -> {ok, State};
+get_server_conf(#config{tcp_allowed_address_t = AllowedAddress,
+						tcp_accept_timeout = AcceptCount,
+						tcp_recv_timeout = RecvTimeout}) ->
+	[{allowed_address, AllowedAddress},
+	 {accept_count, AcceptCount},
+	 {recv_timeout, RecvTimeout}].
 
-start_listeners([H|T], Port, State) ->
-	case do_start_listener(Port, H, State) of
-		{ok, NewState} -> start_listeners(T, Port, NewState);
-		{{error, Reason}, NewState} -> {error, Reason, NewState}
+get_tcp_opts(#config{tcp_keepalive = KeepAlive,
+					 tcp_nodelay = NoDelay}) ->
+	[ 	binary, 
+		{packet, 0}, 
+		{active, false},
+		{buffer, 8000},
+		{send_timeout_close, true},
+		{send_timeout, ?TCP_SEND_TIMEOUT}, 
+		{keepalive, KeepAlive}, 
+		{nodelay, NoDelay},
+		{backlog, ?TCP_BACKLOG},
+		{reuseaddr, true},
+		{delay_send, false}
+	].
+
+new_request(Socket, RequestBin) ->
+	try
+		case ems_http_util:encode_request(Socket, RequestBin, self()) of
+			 {ok, Request} -> 
+				% TCP_LINGER2 for Linux
+				inet:setopts(Socket,[{raw,6,8,<<30:32/native>>}]),
+				% TCP_DEFER_ACCEPT for Linux
+				inet:setopts(Socket,[{raw, 6,9, << 30:32/native >>}]),
+				dispatch_request(Request);
+			 {error, Request, Reason} -> 
+				 Response = ems_http_util:encode_response(<<"400">>, ?HTTP_ERROR_400),
+				 send_response(400, Reason, Request, Response);
+			 {error, invalid_http_header} -> 
+				gen_tcp:close(Socket),
+				ems_logger:error("Invalid HTTP request, close socket.")
+		end
+	catch
+		_Exception:_ReasonEx ->
+			gen_tcp:close(Socket),
+			ems_logger:error("Internal http error in process_request, close socket.")
+	end.
+		
+
+dispatch_request(Request = #request{type = "OPTIONS"}) ->
+	Response = ems_http_util:encode_options_response(),
+	send_response(200, ok, Request, Response);
+
+dispatch_request(Request = #request{type = "GET", url = "/"}) ->
+	Response = ems_http_util:encode_its_works_response(),
+	send_response(200, ok, Request, Response);
+
+dispatch_request(Request = #request{type = "GET", url = "/favicon.ico"}) ->
+	Response = ems_http_util:encode_favicon_response(),
+	send_response(200, ok, Request, Response);
+
+dispatch_request(Request) ->
+	case ems_dispatcher:dispatch_request(Request) of
+		{ok, Request2} -> 
+			RefMonitor = erlang:monitor(process, Request2#request.service_pid),
+			receive 
+				{ok, Result} -> 
+					Response = ems_http_util:encode_response(<<"200">>, Result),
+					send_response(200, ok, Request2, Response),
+					io:format("200 - processou e enviou!\n");
+				{ok, Result, MimeType} -> 
+					Response = ems_http_util:encode_response(<<"200">>, Result, MimeType),
+					send_response(200, ok, Request2, Response),
+					io:format("200 - processou e enviou!\n");
+				{error, Reason} ->
+					Response = ems_http_util:encode_response(<<"400">>, ?HTTP_ERROR_400),
+					send_response(400, Reason, Request2, Response),
+					io:format("200 - processou e enviou!\n");
+				{'DOWN', _MonitorRef, _Type, _Object, _Info} ->
+					Response = ems_http_util:encode_response(<<"400">>, ?HTTP_ERROR_503),
+					send_response(400, service_down, Request2, Response),
+					io:format("400 - processou morreu!\n")
+				after Request2#request.service#service.timeout ->	
+					Response = ems_http_util:encode_response(<<"503">>, ?HTTP_ERROR_503),
+					send_response(503, timeout, Request2, Response),
+					io:format("503 - timeout ~p!\n", [Request2#request.service#service.timeout])
+			end,
+			erlang:demonitor(RefMonitor, [flush, info]);
+		{error, ReasonDisp} ->	
+			Response = ems_http_util:encode_response(<<"400">>, ?HTTP_ERROR_400),
+			send_response(400, ReasonDisp, Request, Response)
 	end.
 
-do_start_listener(Port, IpAddress, State) ->
-	case ems_http_listener:start(Port, IpAddress) of
-		{ok, PidListener} ->
-			NewState = State#state{listener=[{PidListener, Port, IpAddress}|State#state.listener]},
-			{ok, NewState};
-		{error, Reason} ->
-			{{error, Reason}, State}
-	end.
+send_response(_HttpCode, _Reason, Request, Response) ->
+	%T2 = ems_util:get_milliseconds(),
+	%Latencia = T2 - Request#request.t1,
+	case gen_tcp:send(Request#request.socket, Response) of
+		ok -> gen_tcp:close(Request#request.socket);
+		{error, timeout} -> gen_tcp:close(Request#request.socket);
+		{error, closed} -> ok;
+		_ -> gen_tcp:close(Request#request.socket)
+	end,
+	%Request2 = Request#request{latency = Latencia, 
+	%						   code = HttpCode, 
+	%						   reason = Reason},
+	%ems_request:finaliza_request(Request2)
+	ok.
+	
 
-do_stop_listener(Port, IpAddress, State) ->
-	case [ S || {S,P,I} <- State#state.listener, {P,I} == {Port, IpAddress}] of
-		[PidListener|_] ->
-			gen_server:call(PidListener, shutdown),
-			NewState = State#state{listener=lists:delete({PidListener, Port, IpAddress}, State#state.listener)},
-			ems_logger:info("Stopped listening at the address ~p:~p.", [inet:ntoa(IpAddress), Port]),
-			{ok, NewState};
-		_ -> 
-			{{error, enolisten}, State}
-	end.

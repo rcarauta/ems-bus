@@ -6,18 +6,18 @@
 %% @copyright ErlangMS Team
 %%********************************************************************
 
-%% Mensagens de erro 
--define(MSG_SERVICO_NAO_ENCONTRADO, "Serviço ~p não encontrado.").
--define(MSG_SERVICO_NAO_DISP, "Serviço ~p listado no catálogo mas não disponível.").
--define(MSG_SERVICO_FALHOU, "Serviço ~p falhou ao atender solicitação. Motivo: ~p.").
+%% Messages
+-define(MSG_SERVICO_NAO_ENCONTRADO, "Service ~p not found.").
+-define(MSG_SERVICO_NAO_DISP, "Service ~p not found.").
+-define(MSG_SERVICO_FALHOU, "Service ~p failed to meet request.Reason: ~p.").
 
 
-%% Mensagens de erro HTTP no formato JSON
--define(HTTP_ERROR_400, <<"{\"error\":\"HTTP 400\",\"message\":\"Requisição inválida.\"}"/utf8>>).
--define(HTTP_ERROR_401, <<"{\"error\":\"HTTP 401\",\"message\":\"Acesso não autorizado.\"}"/utf8>>).
--define(HTTP_ERROR_404, <<"{\"error\":\"HTTP 404\",\"message\":\"Serviço não encontrado.\"}"/utf8>>).
--define(HTTP_ERROR_404_FILE_NOT_FOUND, <<"{\"error\":\"HTTP 404\",\"message\":\"Arquivo não encontrado.\"}"/utf8>>).
--define(HTTP_ERROR_415, <<"{\"error\":\"HTTP 415\",\"message\":\"O servidor aceita somente JSON.\"}"/utf8>>).
--define(HTTP_ERROR_502(Motivo), io_lib:format(<<"{\"error\":\"HTTP 502\",\"message\":\"Serviço falhou ao atender solicitação. Motivo: ~p.\"}"/utf8>>, [Motivo])).
--define(HTTP_ERROR_502, <<"{\"error\":\"HTTP 502\",\"message\":\"Serviço falhou ao atender solicitação.\"}"/utf8>>).
--define(HTTP_ERROR_503, <<"{\"error\":\"HTTP 503\",\"message\":\"Serviço encontrado no catálogo de serviços mas está indisponível.\"}"/utf8>>).
+%% Messages HTTP in JSON format
+-define(HTTP_ERROR_400, <<"{\"error\":\"HTTP 400\",\"message\":\"Invalid request.\"}"/utf8>>).
+-define(HTTP_ERROR_401, <<"{\"error\":\"HTTP 401\",\"message\":\"Unauthorized access.\"}"/utf8>>).
+-define(HTTP_ERROR_404, <<"{\"error\":\"HTTP 404\",\"message\":\"Service not found.\"}"/utf8>>).
+-define(HTTP_ERROR_404_FILE_NOT_FOUND, <<"{\"error\":\"HTTP 404\",\"message\":\"File not found.\"}"/utf8>>).
+-define(HTTP_ERROR_415, <<"{\"error\":\"HTTP 415\",\"message\":\"The server only accepts JSON.\"}"/utf8>>).
+-define(HTTP_ERROR_502(Motivo), io_lib:format(<<"{\"error\":\"HTTP 502\",\"message\":\"Service failed to meet request. Reason: ~p.\"}"/utf8>>, [Motivo])).
+-define(HTTP_ERROR_502, <<"{\"error\":\"HTTP 502\",\"message\":\"Service failed to meet request.\"}"/utf8>>).
+-define(HTTP_ERROR_503, <<"{\"error\":\"HTTP 503\",\"message\":\"Service is unavailable.\"}"/utf8>>).

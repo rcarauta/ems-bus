@@ -47,7 +47,8 @@
 					  node_exec = undefined,					%% Node que foi enviado a solicitação
 					  status = latency,							%% status: latency, req_done, req_send
 					  worker_send,
-					  protocol = http							%% Protocol (http, ldap)
+					  protocol = http,							%% Protocol (http, ldap)
+					  service_pid :: pid()						%% service pid
 				  }).
 
 -record(service, {
@@ -63,7 +64,8 @@
 					function_name :: string(),					%% Nome da mensagem ou função que vai ser invocada no processo que vai atender a requisição
 					function :: atom(),  						%% Atom da mensagem ou função que vai ser invocada no processo que vai atender a requisição
 					id_re_compiled,   							%% Identificador da expressão regular que vai verificar se a URL bate com a URL da requisição
-					apikey  :: boolean(), 						%% Indica se o contrato estará listado no Portal API Management
+					hide  :: boolean(), 						%% Indica se o serviço está oculto
+					use_re  :: boolean(), 						%% Indica que a url deve ser processada usando uma expressão regular
 					comment :: string(), 						%% Comentário sobre o que o contrato oferece em termos de serviço
 					version :: string(), 						%% Versão do contrato do serviço
 					owner :: string(),  						%% Quem é o proprietário pelo serviço
@@ -75,6 +77,7 @@
 					result_cache :: non_neg_integer(), 			%% Indica quanto tempo em milisegundos o resultado vai ficar armazenado em cache (somente para o módulo msbus_static_file_service)
 					authentication :: string(),					%% Forma de autenticação (Por enquanto somente Basic)
 					node,										%% Node ou lista de node onde os serviços estão publicados
+					timeout :: integer(),						%% Timeout to wait for request. Default 5000 (5ms)
 					lang										%% Linguagem que foi utilizada para implementar o serviço
 				}).
 

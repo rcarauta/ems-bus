@@ -1,14 +1,14 @@
 %%********************************************************************
 %% @title Módulo ems_pool
 %% @version 1.0.0
-%% @doc Módulo para gerenciamento de pool de processos. Internamente usa poolboy.
+%% @doc Module for pool management processes. Internally uses poolboy.
 %% @author Everton de Vargas Agilar <evertonagilar@gmail.com>
 %% @copyright ErlangMS Team
 %%********************************************************************
 
 -module(ems_pool).
 
--export([child_spec/3, transaction/2, call/2, cast/2, status/0, checkout/1, checkin/2]).
+-export([child_spec/3, transaction/2, call/2, call/3, cast/2, status/0, checkout/1, checkin/2]).
 
 -spec child_spec(PoolId :: term(),
                  PoolArgs :: proplists:proplist(),
@@ -37,20 +37,16 @@ checkin(Pool, Worker) -> poolboy:checkin(Pool, Worker).
 
 cast(Pool, Args) ->
 	Worker = poolboy:checkout(Pool),
-	try
-		gen_server:cast(Worker, Args),
-		erlang:yield(),
-		erlang:yield(),
-		erlang:yield()
-	after
-		poolboy:checkin(Pool, Worker)
-	end.
+	gen_server:cast(Worker, Args),
+	Worker.
 
 
+call(Pool, Args) -> call(Pool, Args, 5000).
+	
 -spec call(Pool :: poolboy:pool(), Args :: list()) -> any().
-call(Pool, Args) ->
+call(Pool, Args, Timeout) ->
 	Worker = poolboy:checkout(Pool),
-	Result = gen_server:call(Worker, Args),
+	Result = gen_server:call(Worker, Args, Timeout),
 	ok = poolboy:checkin(Pool, Worker),
 	Result.
 

@@ -18,7 +18,7 @@
 -export([start/0, start_link/1, stop/0]).
 
 %% Cliente interno API
--export([execute/2]).
+-export([execute/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/1, handle_info/2, terminate/2, code_change/3]).
@@ -26,7 +26,7 @@
 -define(SERVER, ?MODULE).
 
 %  Armazena o estado do service. 
--record(state, {}). 
+-record(state, {count_reqs = 0}). 
 
 
 %%====================================================================
@@ -47,8 +47,8 @@ stop() ->
 %% Cliente API
 %%====================================================================
  
-execute(Request, From)	->
-	ems_pool:cast(ems_info_service_pool, {info, Request, From}).
+execute(Request)	->
+	ems_pool:cast(ems_info_service_pool, {info, Request}).
 
 
 %%====================================================================
@@ -56,21 +56,20 @@ execute(Request, From)	->
 %%====================================================================
  
 init(_Args) ->
-    process_flag(trap_exit, true),
     {ok, #state{}}. 
     
 handle_cast(shutdown, State) ->
     {stop, normal, State};
 
-handle_cast({info, Request, _From}, State) ->
-	{Result, NewState} = do_info(Request, State),
-	ems_eventmgr:notifica_evento(ok_request, {service, Request, Result}),
-	%gen_server:cast(From, {service, Request, Result}), 
-	{noreply, NewState}.
+handle_cast({info, {_, From}}, #state{count_reqs = Count}) ->
+	Result = get_info(),
+	ems_pool:checkin(ems_info_service_pool, self()),
+	From ! {ok, Result},
+	{noreply, #state{count_reqs = Count + 1}}.
     
-handle_call({info, Request}, _From, State) ->
-	{Result, NewState} = do_info(Request, State),
-	{reply, Result, NewState}.
+handle_call({info, _Request}, _From, #state{count_reqs = Count}) ->
+	Result = get_info(),
+	{reply, Result, #state{count_reqs = Count + 1}}.
 
 handle_info(State) ->
    {noreply, State}.
@@ -78,7 +77,8 @@ handle_info(State) ->
 handle_info(_Msg, State) ->
    {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
+	io:format("Terminate ems_info_service. Reason: ~p\n", [Reason]),
     ok.
  
 code_change(_OldVsn, State, _Extra) ->
@@ -89,7 +89,19 @@ code_change(_OldVsn, State, _Extra) ->
 %% Funções internas
 %%====================================================================
     
-do_info(_Request, State) ->
-	Result = <<"{\"message\": \"It works!!!\"}">>,
-	{Result, State}.
+get_info() -> 
+	SchedId = erlang:system_info(scheduler_id),
+	SchedNum = erlang:system_info(schedulers),
+	ProcCount = erlang:system_info(process_count),
+	ProcLimit = erlang:system_info(process_limit),
+	ProcMemUsed = erlang:memory(processes_used),
+	ProcMemAlloc = erlang:memory(processes),
+	MemTot = erlang:memory(total),
+	#{<<"SchedulerId">> => SchedId, 
+	  <<"Num scheduler">> => SchedNum, 
+	  <<"Process count">> => ProcCount, 
+	  <<"Process limit">> => ProcLimit, 
+	  <<"Memory used">> => ProcMemUsed,
+	  <<"Memory allocated">> => ProcMemAlloc, 
+	  <<"TotalMemoryAllocated">> => MemTot}. 
 

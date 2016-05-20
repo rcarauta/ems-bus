@@ -1,5 +1,5 @@
 %%********************************************************************
-%% @title Módulo ems_bus_option_service
+%% @title Módulo ems_options_service
 %% @version 1.0.0
 %% @doc Serviço que responde o verbo OPTION e retorna o header 
 %%	    com os métodos suportados.
@@ -62,9 +62,9 @@ init(_Args) ->
 handle_cast(shutdown, State) ->
     {stop, normal, State};
 
-handle_cast({option, Request, _From}, State) ->
-	ems_eventmgr:notifica_evento(ok_request, {200, Request, <<>>}),
-	%gen_server:cast(From, {service, Request, <<>>}), 
+handle_cast({option, _Request, From}, State) ->
+	ems_pool:checkin(ems_options_service_pool, self()),
+	From ! {ok, <<>>},
 	{noreply, State}.
     
 handle_call(Msg, _From, State) ->

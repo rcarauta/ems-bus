@@ -107,6 +107,16 @@ encode_response(Codigo, Payload) ->
     Payload2 = ems_util:json_encode(Payload),
     encode_response(Codigo, Payload2).
 
+encode_its_works_response() -> encode_response(<<"200">>, <<"Its works!!!">>).
+
+encode_options_response() -> encode_response(<<"200">>, <<"">>).
+
+encode_favicon_response() ->
+	case file:read_file(?FAVICON_PATH) of
+		{ok, File} -> encode_response(<<"200">>, File, <<"image/x-icon">>);
+		{error, _Reason} -> encode_response(<<"200">>, <<>>, <<"image/x-icon">>)
+	end.
+
 header_cache_control(<<"image/x-icon">>) ->
 	<<"Cache-Control: max-age=290304000, public"/utf8>>;
 

@@ -109,7 +109,7 @@ execute_command(Command,
 													  table_name = TableName,
 													  primary_key = PrimaryKey,
 													  debug = Debug}}, 
-													  State) ->
+				State) ->
 	try
 		case get_connection(Datasource, TableName, PrimaryKey, Debug) of
 			{ok, Conn} -> 
@@ -122,16 +122,22 @@ execute_command(Command,
 	catch
 		_Exception:Reason2 -> {error, Reason2}
 	end.
-	    
-	    
-parse_filter(<<>>) -> [];   
 
+	    
+parse_fields([]) -> "*";
+
+parse_fields(Fields) -> 
+	Fields2 = string:tokens(Fields, ","),
+	string:join(Fields2, ",").	    
+	    
+parse_filter(<<>>) -> {"", ""};
 
 parse_filter(Filter) ->    
     case ems_util:json_decode(Filter) of
 		{ok, Filter2} -> parse_filter(Filter2, [], []);
 		_ -> erlang:error(einvalid_filter)
 	end.
+
 parse_filter([], [], []) -> {"", ""};
 
 	
@@ -290,20 +296,19 @@ format_sql_operator("isnull") -> "is null";
 format_sql_operator(_) -> erlang:error(invalid_operator_filter).
 
 
-generate_dynamic_sql(<<>>, TableName) ->
-	Sql = "select * from " ++ TableName,
-	{ok, {Sql, []}};
-
-
-generate_dynamic_sql(FilterJson, TableName) ->
+generate_dynamic_sql(FilterJson, Fields, TableName) ->
 	{Filter, Params} = parse_filter(FilterJson),
-	Sql = "select * from " ++ TableName ++ Filter,
+	io:format("parse fields aaaaa1\n"),
+	Fields2 = parse_fields(Fields),
+	io:format("parse fields aaaa is  ~p\n", [Fields2]),
+	Sql = lists:flatten(io_lib:format("select ~s from ~s ~s", [Fields2, TableName, Filter])),
 	{ok, {Sql, Params}}.
 
 
-generate_dynamic_sql(Id, TableName, PrimaryKey) ->
+generate_dynamic_sql(Id, Fields, TableName, PrimaryKey) ->
 	Params = [{sql_integer, [Id]}],
-	Sql = "select * from " ++ TableName ++ " where " ++ PrimaryKey ++ " = ?",
+	Fields2 = parse_fields(Fields),
+	Sql = lists:flatten(io_lib:format("select ~s from ~s where ~s = ?", [Fields2, TableName, PrimaryKey])),
 	{ok, {Sql, Params}}.
 
 
@@ -362,20 +367,24 @@ get_datasource_type(Datasource) ->
 do_find(#request{querystring_map = QuerystringMap, 
 				 service = #service{table_name = TableName,
 									debug = Debug}},
-									Conn, _State) ->
+				 Conn, _State) ->
 	FilterJson = maps:get(<<"filter">>, QuerystringMap, <<>>),
-	case generate_dynamic_sql(FilterJson, TableName) of
+	Fields = binary_to_list(maps:get(<<"fields">>, QuerystringMap, <<>>)),
+	io:format("fields is ~p\n", [Fields]),
+	case generate_dynamic_sql(FilterJson, Fields, TableName) of
 		{ok, {Sql, Params}} -> execute_dynamic_sql(Sql, Params, Conn, Debug);
 		{error, Reason} -> {error, Reason}
 	end.
 
 
-do_find_by_id(Request = #request{service = #service{table_name = TableName,
+do_find_by_id(Request = #request{querystring_map = QuerystringMap, 
+								 service = #service{table_name = TableName,
 													primary_key = PrimaryKey,
 													debug = Debug}}, 
-													Conn, _State) ->
+			  Conn, _State) ->
 	Id = list_to_integer(ems_request:get_param_url(<<"id">>, "0", Request)),
-	case generate_dynamic_sql(Id, TableName, PrimaryKey) of
+	Fields = binary_to_list(maps:get(<<"fields">>, QuerystringMap, <<>>)),
+	case generate_dynamic_sql(Id, Fields, TableName, PrimaryKey) of
 		{ok, {Sql, Params}} -> execute_dynamic_sql(Sql, Params, Conn, Debug);
 		{error, Reason} -> {error, Reason}
 	end.

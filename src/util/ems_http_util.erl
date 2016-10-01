@@ -55,7 +55,7 @@ hashsym_req([H|_] = L, Idx, Rid, Rowid, Params) when H >= 48 andalso H =< 57 ->
 			_ -> {list_to_binary("id_" ++ erlang:integer_to_list(Idx)), P}
 		 end,
 	hashsym_req(L2, Idx+1, Rid + P, Rowid, [P2 | Params]);
-hashsym_req([H|T], Idx, Rid, Rowid, Params) -> hashsym_req(T, Idx, Rid + H, Rowid + H, Params).
+hashsym_req([H|T], Idx, Rid, Rowid, Params) -> hashsym_req(T, Idx, (Rid + H) bsl 1, (Rowid + H) bsl 1, Params).
 
 hashsym_req_id([], P) -> {[], P};
 hashsym_req_id([H|_] = L, P) when H == 47 orelse H == 63 -> {L, P};

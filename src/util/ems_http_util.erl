@@ -14,6 +14,12 @@
 -include("../../include/ems_schema.hrl").
 -include("../../include/ems_http_messages.hrl").
 
+-on_load(load_module/0).
+
+load_module() ->
+	io:format("module loading..."),
+	ets:new(ets_request, [set, named_table, public]),
+	ok.
 
 encode_request(Uri) -> encode_request("GET", Uri).
 
@@ -33,6 +39,31 @@ encode_request(Method, Uri) ->
 	Http_Version = "HTTP/1.1",
 	Payload = <<>>,
 	encode_request(Method, UriRaw, HttpParams, Http_Version, Payload, undefined, undefined).
+
+
+%% Retorna o hash da url e os parâmetros do request
+hashsym_req(S) when is_binary(S) -> hashsym_req(binary_to_list(S), 1, 0, 0, []);
+hashsym_req(S) -> hashsym_req(S, 1, 0, 0, []).
+
+hashsym_req([], _Idx, Rid, Rowid, Params) -> {Rid, Rowid, Params, []};
+hashsym_req([H|T], Idx, Rid, Rowid, Params) when H == 47 -> hashsym_req(T, Idx, Rid, Rowid, Params);
+hashsym_req([H|T], _Idx, Rid, Rowid, Params) when H == 63 -> {Rid + hashsym_req_query(T, 0), Rowid, Params, T};
+hashsym_req([H|_] = L, Idx, Rid, Rowid, Params) when H >= 48 andalso H =< 57 -> 
+	{L2, P} = hashsym_req_id(L, 0),
+	P2 = case Idx of
+			1 -> {<<"id">>, P};
+			_ -> {list_to_binary("id_" ++ erlang:integer_to_list(Idx)), P}
+		 end,
+	hashsym_req(L2, Idx+1, Rid + P, Rowid, [P2 | Params]);
+hashsym_req([H|T], Idx, Rid, Rowid, Params) -> hashsym_req(T, Idx, Rid + H, Rowid + H, Params).
+
+hashsym_req_id([], P) -> {[], P};
+hashsym_req_id([H|_] = L, P) when H == 47 orelse H == 63 -> {L, P};
+hashsym_req_id([H|T], P) -> hashsym_req_id(T, P * 10 + H - $0).
+
+hashsym_req_query([], Hash) -> Hash;
+hashsym_req_query([H|T], Hash) -> hashsym_req_query(T, Hash + H).
+
 
 encode_request(Method, UriRaw, HttpParams, Http_Version, Payload, Socket, WorkerSend) ->
 	try
@@ -90,6 +121,7 @@ encode_request(Method, UriRaw, HttpParams, Http_Version, Payload, Socket, Worker
 
 %%-spec get_http_header(Header::list()) -> tuple.
 encode_request(Socket, RequestBin, WorkerSend) ->
+	io:format("reqbin is ~p", [RequestBin]),
 	case decode_http_request(RequestBin) of
 		{Method, UriRaw, HttpParams, Http_Version, Payload} -> 
 			encode_request(Method, UriRaw, HttpParams, 
@@ -175,11 +207,8 @@ decode_http_request(RequestBin) ->
 	end.
 
 
-%% @doc Decodifica o payload e transforma em um tipo Erlang
-decode_payload(<<>>) ->
-	{ok, #{}};
-
-%% @doc Decodifica o payload e transforma em um tipo Erlang
+%% @doc Decodifica o payload em um map
+decode_payload(<<>>) -> {ok, #{}};
 decode_payload(PayloadBin) ->
 	case ems_util:json_decode_as_map(PayloadBin) of
 		{ok, PayloadMap} -> PayloadMap;

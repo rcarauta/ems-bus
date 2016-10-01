@@ -9,7 +9,6 @@
 -module(ems_http_worker).
 
 -behavior(gen_server). 
--behaviour(poolboy_worker).
 
 -include("../include/ems_config.hrl").
 -include("../include/ems_schema.hrl").
@@ -20,9 +19,6 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/1, handle_info/2, terminate/2, code_change/3]).
-
-%% Client API
--export([cast/1]).
 
 % State of server
 -record(state, {owner 	  = undefined,	 	 	%% http listener
@@ -51,9 +47,6 @@ stop() ->
 %%====================================================================
 %% Client API
 %%====================================================================
-
-%% @doc Send message to worker
-cast(Msg) -> ems_pool:cast(ems_http_worker_pool, Msg).
 
 
 %%====================================================================
@@ -134,17 +127,15 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %%====================================================================
 
-accept_request(State=#state{owner = Owner,
-							lsocket = LSocket, 
+accept_request(State=#state{lsocket = LSocket, 
 							tcp_config = #tcp_config{tcp_allowed_address_t = AllowedAddress, 
-												     tcp_max_http_worker = _MaxHttpWorker,
 												     tcp_min_http_worker = MinHttpWorker,
 												     tcp_accept_timeout = AcceptTimeout},
 							listener_name = ListenerName}) ->
 	ems_db:inc_counter(ListenerName),
 	case ems_socket:accept(LSocket, AcceptTimeout) of
 		{ok, Socket} -> 
-			CurrentWorkerCount = ems_db:dec_counter(ListenerName),
+			ems_db:dec_counter(ListenerName),
 			case ems_socket:peername(Socket) of
 				{ok, {Ip,_Port}} -> 
 					case Ip of

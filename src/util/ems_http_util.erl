@@ -18,7 +18,7 @@
 
 load_module() ->
 	io:format("module loading..."),
-	ets:new(ets_request, [set, named_table, public]),
+
 	ok.
 
 encode_request(Uri) -> encode_request("GET", Uri).
@@ -65,54 +65,78 @@ hashsym_req_query([], Hash) -> Hash;
 hashsym_req_query([H|T], Hash) -> hashsym_req_query(T, Hash + H).
 
 
+ets_request("GET") -> ets_req_get;
+ets_request("POST") -> ets_req_post;
+ets_request("PUT") -> ets_req_put;
+ets_request("DELETE") -> ets_req_delete;
+ets_request("OPTIONS") -> ets_req_options;
+ets_request(VERB) -> io:format("deu erro\n"), throw({einvalid_type_req, VERB}).
+
 encode_request(Method, UriRaw, HttpParams, Http_Version, Payload, Socket, WorkerSend) ->
 	try
 		Uri = unicode:characters_to_list(mochiutf8:valid_utf8_bytes(list_to_binary(mochiweb_util:unquote(UriRaw))), utf8),
-		RID = erlang:system_time(),
-		Timestamp = calendar:local_time(),
-		T1 = ems_util:get_milliseconds(),
-		[Url|Querystring] = string:tokens(Uri, "?"),
-		case length(Querystring) =< 1 of
-			 true ->
-				Url2 = ems_util:remove_ult_backslash_url(Url),
-				Content_Length = maps:get('Content-Length', HttpParams, 0),
-				Content_Type = maps:get('Content-Type', HttpParams, "application/json"),
-				Accept = maps:get('Accept', HttpParams, "*/*"),
-				Accept_Encoding = maps:get('Accept-Encoding', HttpParams, ""),
-				User_Agent = maps:get('User-Agent', HttpParams, ""),
-				Cache_Control = maps:get('Cache-Control', HttpParams, "false"),
-				Host = maps:get('Host', HttpParams, ""),
-				QuerystringMap = parse_querystring(Querystring),
-				Authorization = maps:get('Authorization', HttpParams, ""),
-				{Rowid, Params_url} = ems_util:hashsym_and_params(Url2),
-				Request = #request{
-					rid = RID,
-					rowid = Rowid,
-					type = Method,
-					uri = Uri,
-					url = Url2,
-					version = Http_Version,
-					querystring = Querystring,
-					querystring_map = QuerystringMap,
-					params_url = Params_url,
-					content_length = Content_Length,
-					content_type = Content_Type,
-					accept = Accept,
-					user_agent = User_Agent,
-					accept_encoding = Accept_Encoding,
-					cache_control = Cache_Control,
-					host = Host,
-					socket = Socket, 
-					t1 = T1, 
-					payload = binary_to_list(Payload), 
-					payload_map = decode_payload(Payload),
-					timestamp = Timestamp,
-					authorization = Authorization,
-					worker_send = WorkerSend,
-					protocol = http
-				},	
-				{ok, Request};
-			_ -> {error, einvalid_querystring}
+		io:format("uri is ~p and method is ~p\n", [Uri, Method]),
+		{Rid, Rowid, Params, Querystring} = hashsym_req(Uri),
+		
+		io:format("Dados is ~p\n", [{Rid, Rowid, Params, Querystring}]),
+		
+		io:format("antes ~p...\n", [Method]),
+		Ets_req = ets_request(Method),
+		io:format("depois...\n"),
+		
+		io:format("lookup...\n"),
+		case ets:lookup(Ets_req, Rid) of
+			[] -> 
+				io:format("new...\n"),
+				Timestamp = calendar:local_time(),
+				T1 = ems_util:get_milliseconds(),
+				[Url|Querystring] = string:tokens(Uri, "?"),
+				case length(Querystring) =< 1 of
+					 true ->
+						Url2 = ems_util:remove_ult_backslash_url(Url),
+						Content_Length = maps:get('Content-Length', HttpParams, 0),
+						Content_Type = maps:get('Content-Type', HttpParams, "application/json"),
+						Accept = maps:get('Accept', HttpParams, "*/*"),
+						Accept_Encoding = maps:get('Accept-Encoding', HttpParams, ""),
+						User_Agent = maps:get('User-Agent', HttpParams, ""),
+						Cache_Control = maps:get('Cache-Control', HttpParams, "false"),
+						Host = maps:get('Host', HttpParams, ""),
+						QuerystringMap = parse_querystring(Querystring),
+						Authorization = maps:get('Authorization', HttpParams, ""),
+						Params_url = maps:from_list(Params),
+						Request = #request{
+							rid = Rid,
+							rowid = Rowid,
+							type = Method,
+							uri = Uri,
+							url = Url2,
+							version = Http_Version,
+							querystring = Querystring,
+							querystring_map = QuerystringMap,
+							params_url = Params_url,
+							content_length = Content_Length,
+							content_type = Content_Type,
+							accept = Accept,
+							user_agent = User_Agent,
+							accept_encoding = Accept_Encoding,
+							cache_control = Cache_Control,
+							host = Host,
+							socket = Socket, 
+							t1 = T1, 
+							payload = binary_to_list(Payload), 
+							payload_map = decode_payload(Payload),
+							timestamp = Timestamp,
+							authorization = Authorization,
+							worker_send = WorkerSend,
+							protocol = http
+						},	
+						ets:insert(Ets_req, {Rid, Request}),
+						{ok, Request};
+					_ -> {error, einvalid_querystring}
+				end;
+			[{_, Req}] ->
+				io:format("já existe...\n"),
+				{ok, Req}
 		end
 	catch
 		_Exception:Reason -> {error, Reason}

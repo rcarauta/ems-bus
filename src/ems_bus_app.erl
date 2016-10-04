@@ -43,6 +43,13 @@ start(_StartType, StartArgs) ->
 					ems_logger:info("Server ~s started in ~pms.", [node(), ems_util:get_milliseconds() - T1]),
 					ems_logger:sync(),
 					ems_logger:set_level(info),
+					
+					ets:new(ets_req_get, [ordered_set, named_table, public, {read_concurrency, true}]),
+					ets:new(ets_req_post, [ordered_set, named_table, public, {read_concurrency, true}]),
+					ets:new(ets_req_put, [ordered_set, named_table, public, {read_concurrency, true}]),
+					ets:new(ets_req_delete, [ordered_set, named_table, public, {read_concurrency, true}]),
+					ets:new(ets_req_options, [ordered_set, named_table, public, {read_concurrency, true}]),
+					
 					Ret;
 				Error-> 
 					io:format("Error processing catalogs: ~p.", [Error]),

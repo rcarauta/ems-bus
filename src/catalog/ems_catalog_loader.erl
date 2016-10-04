@@ -280,7 +280,7 @@ parse_catalog([H|T], Cat2, Cat3, Cat4, CatK, Id, Conf) ->
 		Version = maps:get(<<"version">>, H, <<>>),
 		Owner = maps:get(<<"owner">>, H, <<>>),
 		Async = maps:get(<<"async">>, H, <<"false">>),
-		Rowid = ems_util:hashsymdef(Url2),
+		{_, Rowid, _, _} = ems_http_util:hashsym_req(Url2),
 		Lang = maps:get(<<"lang">>, H, <<>>),
 		Datasource = parse_datasource(maps:get(<<"datasource">>, H, null)),
 		Result_Cache = maps:get(<<"result_cache">>, H, 0),

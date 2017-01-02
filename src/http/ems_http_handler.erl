@@ -83,6 +83,8 @@ encode_response(Request = #request{type = Method,
 									response_header = #{
 											<<"server">> => ?SERVER_NAME,
 											<<"content-type">> => <<"application/json; charset=utf-8">>,
+											<<"access-control-allow-origin">> => <<"*">>,
+											<<"access-control-allow-methods">> => <<"POST, PUT, GET, OPTIONS, DELETE">>,
 											<<"cache-control">> => <<"no-cache">>
 										}};
 				{ok, <<_Content/binary>> = ResponseData, <<MimeType/binary>> = MimeType} ->
@@ -115,6 +117,8 @@ encode_response(Request = #request{type = Method,
 									response_header = #{
 										<<"server">> => ?SERVER_NAME,
 										<<"content-type">> => <<"application/json; charset=utf-8">>,
+										<<"access-control-allow-origin">> => <<"*">>,
+										<<"access-control-allow-methods">> => <<"POST, PUT, GET, OPTIONS, DELETE">>,
 										<<"cache-control">> => <<"no-cache">>
 									}};
 				<<_Content/binary>> -> 
@@ -124,6 +128,8 @@ encode_response(Request = #request{type = Method,
 									response_header = ResponseHeader#{
 													<<"server">> => ?SERVER_NAME,
 													<<"content-type">> => maps:get(<<"content-type">>, ResponseHeader, <<"application/json; charset=utf-8">>),
+													<<"access-control-allow-origin">> => <<"*">>,
+													<<"access-control-allow-methods">> => <<"POST, PUT, GET, OPTIONS, DELETE">>,
 													<<"cache-control">> => maps:get(<<"cache-control">>, ResponseHeader, <<"no-cache">>)
 												}};
 				Content when is_map(Content) -> 
@@ -134,6 +140,8 @@ encode_response(Request = #request{type = Method,
 									response_header = #{
 										<<"server">> => ?SERVER_NAME,
 										<<"content-type">> => <<"application/json; charset=utf-8">>,
+										<<"access-control-allow-origin">> => <<"*">>,
+										<<"access-control-allow-methods">> => <<"POST, PUT, GET, OPTIONS, DELETE">>,
 										<<"cache-control">> => <<"no-cache">>
 									}};
 				Content = [H|_] when is_map(H) -> 
@@ -144,6 +152,8 @@ encode_response(Request = #request{type = Method,
 									response_header = #{
 										<<"server">> => ?SERVER_NAME,
 										<<"content-type">> => <<"application/json; charset=utf-8">>,
+										<<"access-control-allow-origin">> => <<"*">>,
+										<<"access-control-allow-methods">> => <<"POST, PUT, GET, OPTIONS, DELETE">>,
 										<<"cache-control">> => <<"no-cache">>
 									}};
 				Content = [H|_] when is_tuple(H) -> 
@@ -154,6 +164,8 @@ encode_response(Request = #request{type = Method,
 									response_header = #{
 										<<"server">> => ?SERVER_NAME,
 										<<"content-type">> => <<"application/json; charset=utf-8">>,
+										<<"access-control-allow-origin">> => <<"*">>,
+										<<"access-control-allow-methods">> => <<"POST, PUT, GET, OPTIONS, DELETE">>,
 										<<"cache-control">> => <<"no-cache">>
 									}};
 				Content -> 
@@ -176,6 +188,8 @@ encode_response(Request = #request{type = Method,
 									response_header = #{
 										<<"server">> => ?SERVER_NAME,
 										<<"content-type">> => <<"application/json; charset=utf-8">>,
+										<<"access-control-allow-origin">> => <<"*">>,
+										<<"access-control-allow-methods">> => <<"POST, PUT, GET, OPTIONS, DELETE">>,
 										<<"cache-control">> => <<"no-cache">>
 									}};
 				_ ->
